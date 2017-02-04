@@ -18,6 +18,8 @@
 * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 *)
 
+module MakeSlacko(A: Sig.Base_url) = struct
+
 open Lwt.Infix
 module Cohttp_unix = Cohttp_lwt_unix
 module Cohttp_body = Cohttp_lwt_body
@@ -584,10 +586,8 @@ type history_result = [
   | timestamp_error
 ]
 
-let base_url = "https://slack.com/api/"
-
 let endpoint e =
-  base_url ^ e
+  A.base_url ^ e
   |> Uri.of_string
 
 (* internal *)
@@ -1688,3 +1688,7 @@ let users_set_presence token presence =
     | #parsed_auth_error
     | #presence_error as res -> res
     | _ -> `Unknown_error
+
+end
+
+include MakeSlacko(struct let base_url = "https://slack.com/api/" end)

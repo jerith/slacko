@@ -27,6 +27,14 @@ Executable "slack-notify"
   NativeOpt:      -safe-string
   CompiledObject: best
 
+Executable "my-slack-notify"
+  Path:           src
+  BuildDepends:   cmdliner
+  MainIs:         my_slack_notify.ml
+  ByteOpt:        -safe-string
+  NativeOpt:      -safe-string
+  CompiledObject: best
+
 SourceRepository head
   Type:     git
   Location: https://github.com/Leonidas-from-XIV/slacko.git
