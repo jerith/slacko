@@ -178,11 +178,7 @@ type topic_result = [
 
 type timestamp = float
 
-type session = {
-  base_url: string;
-  token: string;
-  (* Mutable id cache goes here? *)
-}
+type session = Session.t
 
 type token = session
 
@@ -608,8 +604,8 @@ let unauthed_endpoint ~base_url method' =
   |> Uri.of_string
 
 let endpoint method' session =
-  unauthed_endpoint ~base_url:(Some session.base_url) method'
-  |> definitely_add "token" session.token
+  unauthed_endpoint ~base_url:(Some session.Session.base_url) method'
+  |> definitely_add "token" session.Session.token
 
 (* private API return type *)
 (* the strict is important here, because we just match ok & error and
@@ -773,37 +769,50 @@ exception No_matches
 exception No_unique_matches
 exception Lookup_failed
 
-(* look up the id of query from results provided by the listfn *)
-let lookupk session listfn filterfn k =
-  match%lwt listfn session with
-  | `Success channels -> (match List.filter filterfn channels with
-    | [] -> Lwt.fail No_matches
-    | [x] -> Lwt.return @@ k x
-    | _ -> Lwt.fail No_unique_matches)
+(* like id_of_channel but does not resolve names to ids *)
+let string_of_channel = function
+  | ChannelId id -> id
+  | ChannelName name -> name
+
+let channel_update_fn session () =
+  match%lwt channels_list session with
+  | `Success channels ->
+    Lwt.return @@ List.map (fun (x:channel_obj) -> x.name, string_of_channel x.id) channels
+  | _ -> Lwt.fail Lookup_failed
+
+let string_of_user = function
+  | UserId id -> id
+  | UserName name -> name
+
+let user_update_fn session () =
+  match%lwt users_list session with
+  | `Success users ->
+    Lwt.return @@ List.map (fun (x:user_obj) -> x.name, string_of_user x.id) users
+  | _ -> Lwt.fail Lookup_failed
+
+let string_of_group = function
+  | GroupId id -> id
+  | GroupName name -> name
+
+let group_update_fn session () =
+  match%lwt groups_list session with
+  | `Success groups ->
+    Lwt.return @@ List.map (fun (x:group_obj) -> x.name, string_of_group x.id) groups
   | _ -> Lwt.fail Lookup_failed
 
 let id_of_channel session : _ -> [ `User_not_found | `Channel_not_found | `Found of string ] Lwt.t = function
   | ChannelId id -> Lwt.return @@ `Found id
   | ChannelName name ->
     let base = String.sub name 1 @@ String.length name - 1 in
-    match%lwt (lookupk session channels_list (fun (x:channel_obj) -> x.name = base) @@ function
-    | {id = ChannelId s; _} -> Some s
-    | {id = ChannelName _; _} -> None) with
+    match%lwt Session.cache_lookup session.Session.channel_cache base (channel_update_fn session) with
     | exception _ -> Lwt.return `Channel_not_found
     | Some v -> Lwt.return @@ `Found v
     | None -> Lwt.return `Channel_not_found
 
-(* like id_of_channel but does not resolve names to ids *)
-let string_of_channel = function
-  | ChannelId id -> id
-  | ChannelName name -> name
-
 let id_of_user session = function
   | UserId id -> Lwt.return @@ `Found id
   | UserName name ->
-    match%lwt (lookupk session users_list (fun (x:user_obj) -> x.name = name) @@ function
-    | {id = UserId s; _} -> Some s
-    | {id = UserName _; _} -> None) with
+    match%lwt Session.cache_lookup session.Session.user_cache name (user_update_fn session) with
     | exception _ -> Lwt.return `User_not_found
     | Some v -> Lwt.return @@ `Found v
     | None -> Lwt.return `User_not_found
@@ -811,9 +820,7 @@ let id_of_user session = function
 let id_of_group session = function
   | GroupId id -> Lwt.return @@ `Found id
   | GroupName name ->
-    match%lwt (lookupk session groups_list (fun (x:group_obj) -> x.name = name) @@ function
-    | {id = GroupId s; _} -> Some s
-    | {id = GroupName _; _} -> None) with
+    match%lwt Session.cache_lookup session.Session.group_cache name (group_update_fn session) with
     | exception _ -> Lwt.return `Channel_not_found
     | Some v -> Lwt.return @@ `Found v
     | None -> Lwt.return `Channel_not_found
@@ -845,10 +852,9 @@ let string_of_presence = function
   | Away -> "away"
 
 (* Slacko API helper methods *)
-let start_session ?(base_url=default_base_url) token = {
-  base_url;
-  token;
-}
+let start_session ?(base_url=default_base_url) token =
+  Session.create base_url token
+let flush_session_caches session = Session.flush_caches session
 let token_of_string token = start_session token
 let message_of_string = identity
 

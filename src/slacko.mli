@@ -640,6 +640,9 @@ val start_session: ?base_url:string -> string -> session
 val token_of_string: string -> session
 [@@ocaml.deprecated "Please use 'start_session' instead."]
 
+(** Flush session id caches. *)
+val flush_session_caches: session -> unit
+
 val field: ?title:string -> ?short:bool -> string -> field_obj
 
 val attachment:
